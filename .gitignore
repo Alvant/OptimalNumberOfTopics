@@ -2,6 +2,7 @@
 __pycache__/
 *.py[cod]
 *$py.class
+*.egg-info
 
 # C extensions
 *.so
@@ -20,5 +21,4 @@ ipython_config.py
 bigartm.*
 
 # App Specific
-
 logs/
