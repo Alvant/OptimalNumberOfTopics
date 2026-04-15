@@ -12,7 +12,7 @@ setup(
         'topnum.search_methods.topic_bank.phi_initialization',
         'topnum.tests'
     ],
-    version='0.3.0',
+    version='0.3.1',
     license='MIT',
     description='A set of methods for finding an appropriate number of topics in a text collection',
     author='Machine Intelligence Laboratory',
