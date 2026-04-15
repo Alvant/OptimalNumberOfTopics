@@ -36,9 +36,13 @@ from ..scores._base_coherence_score import (
 
 DOC_ID_COL = 'id'
 NUM_TOP_WORDS = 10
+
 BIG_SEGMENT_LENGTH = 8
+SMALLEST_SEGMENT_LENGTH = 1
+
 SMALL_SEGMENT_LENGTHS = [1, 2, 4]
 SMALL_SEGMENT_LENGTH_PROBABILITIES = [0.3, 0.45, 0.25]
+
 DOCUMENT_LENGTH = 100
 TOP_WORD_PROBABILITY_TIMES_BIGGER = 4
 
@@ -56,10 +60,20 @@ COMPUTATION_METHODS = [
     ComputationMethod.VARIANCE_IN_WINDOW,
     ComputationMethod.FOCUS_CONSISTENCY,
 ]
-RESEARCH_COMPUTATION_METHODS = [
+TOPLEN_COMPUTATION_METHODS = [
+    ComputationMethod.SEGMENT_LENGTH,
+    ComputationMethod.SEGMENT_WEIGHT,
+]
+OTHER_COMPUTATION_METHODS = [
+    ComputationMethod.SUM_OVER_WINDOW,
     ComputationMethod.VARIANCE_IN_WINDOW,
     ComputationMethod.FOCUS_CONSISTENCY,
 ]
+RESEARCH_COMPUTATION_METHODS = [  # TODO: complete research
+    ComputationMethod.VARIANCE_IN_WINDOW,
+    ComputationMethod.FOCUS_CONSISTENCY,
+]
+
 WORD_TOPIC_RELATEDNESS_TYPES = [
     WordTopicRelatednessType.PWT,
     WordTopicRelatednessType.PTW,
@@ -88,26 +102,53 @@ class _MockModel(BaseModel):
 
 
 class TestIntratextCoherenceScore:
-    topics = ['topic_1', 'topic_2', 'topic_3']
-    documents = ['doc_1', 'doc_2', 'doc_3']
+    longest_topic = 'longest_topic'
+    good_topic = 'good_topic'
+    out_of_documents_topic = 'absent_topic'
+    scattered_topic = 'scattered_topic'
+    smoothed_topic = 'smoothed_topic'
+    concentrated_topic = 'concentrated_topic'
+
+    # concentrated topic is present only in one document where it is the main one -- high coherence
+    # (smaller the number of documents where a topic is not main -- higher the coherence -- because of averaging by docs)
+
+    topics = [
+        longest_topic,
+        good_topic,
+        out_of_documents_topic,
+        scattered_topic,
+        smoothed_topic,
+        concentrated_topic,
+    ]
     topic_documents = {
-        'topic_1': ['doc_1', 'doc_2'],
-        'topic_2': ['doc_3'],
-        'topic_3': []
+        longest_topic: ['doc_1', 'doc_2'],
+        good_topic: ['doc_3'],
+        out_of_documents_topic: [],
+        scattered_topic: [],
+        smoothed_topic: ['doc_5'],
+        concentrated_topic: ['doc_6'],
     }
-    best_topic = 'topic_1'
-    out_of_documents_topic = 'topic_3'
     document_topics = {
-        'doc_1': ['topic_1', 'topic_2'],
-        'doc_2': ['topic_1'],
-        'doc_3': ['topic_1', 'topic_2']
+        'doc_1': [longest_topic, good_topic, scattered_topic],
+        'doc_2': [longest_topic],
+        'doc_3': [longest_topic, good_topic, scattered_topic,],
+        'doc_5': [smoothed_topic, longest_topic],
+        'doc_6': [concentrated_topic, smoothed_topic],
     }
-    top_words = {
-        topic: [f'{topic}_word_{i}' for i in range(1, NUM_TOP_WORDS + 1)]
-        for topic in topics
-    }
-    vocabulary = list(reduce(lambda res, cur: res + cur, top_words.values(), []))
-    out_of_topics_word = 'unknown_word'
+    documents = list(document_topics.keys())
+
+    # topic -> its documents -> other documents' topics
+
+    good_topics = [
+        longest_topic, good_topic, concentrated_topic
+    ]
+    bad_topics = [
+        scattered_topic, smoothed_topic,
+    ]
+
+    top_words = None
+    vocabulary = None
+    out_of_topics_word = None
 
     data_folder_path = None
     dataset_file_path = None
@@ -116,6 +157,8 @@ class TestIntratextCoherenceScore:
 
     @classmethod
     def setup_class(cls):
+        cls.create_top_words()
+
         cls.model = _MockModel(cls.create_phi())
 
         document_words = cls.create_documents()
@@ -136,6 +179,24 @@ class TestIntratextCoherenceScore:
         shutil.rmtree(cls.data_folder_path)
 
     @classmethod
+    def create_top_words(cls):
+        top_words = dict()
+
+        for topic in cls.topics:
+            if topic != cls.smoothed_topic:
+                num_top_words = NUM_TOP_WORDS
+            else:
+                num_top_words = 2 * NUM_TOP_WORDS
+
+            top_words[topic] = [
+                f'{topic}_word_{i}' for i in range(1, num_top_words + 1)
+            ]
+
+        cls.top_words = top_words
+        cls.vocabulary = list(reduce(lambda res, cur: res + cur, top_words.values(), []))
+        cls.out_of_topics_word = 'unknown_word'
+
+    @classmethod
     def create_phi(cls) -> pd.DataFrame:
         phi = pd.DataFrame(
             index=[(DEFAULT_ARTM_MODALITY, w) for w in cls.vocabulary],
@@ -147,9 +208,15 @@ class TestIntratextCoherenceScore:
             phi.loc[[(DEFAULT_ARTM_MODALITY, w)
                      for w in cls.top_words[t]], t] = 1.0
 
+            prob_tail_scale = TOP_WORD_PROBABILITY_TIMES_BIGGER
+            # if t != cls.smoothed_topic:
+            #     prob_tail_scale = TOP_WORD_PROBABILITY_TIMES_BIGGER
+            # else:
+            #     prob_tail_scale = 1.0  # TODO: intra texts fail with this (such bcg topic has the highest coherence)
+
             phi.loc[[(DEFAULT_ARTM_MODALITY, w)
                      for w in cls.vocabulary
-                     if w not in cls.top_words[t]], t] = 1.0 / TOP_WORD_PROBABILITY_TIMES_BIGGER
+                     if w not in cls.top_words[t]], t] = 1.0 / prob_tail_scale
 
         phi[:] = phi.values / np.sum(phi.values, axis=0, keepdims=True)
 
@@ -200,10 +267,15 @@ class TestIntratextCoherenceScore:
 
             else:
                 current_topic = np.random.choice(other_topics)
-                current_segment_length = np.random.choice(
-                    SMALL_SEGMENT_LENGTHS,
-                    p=SMALL_SEGMENT_LENGTH_PROBABILITIES
-                )
+
+
+                if current_topic == cls.scattered_topic:
+                    current_segment_length = SMALLEST_SEGMENT_LENGTH
+                else:
+                    current_segment_length = np.random.choice(
+                        SMALL_SEGMENT_LENGTHS,
+                        p=SMALL_SEGMENT_LENGTH_PROBABILITIES
+                    )
 
             segment = np.random.choice(
                 top_words[current_topic],
@@ -246,12 +318,12 @@ class TestIntratextCoherenceScore:
         'text_type, computation_method, word_topic_relatedness, specificity_estimation',
         list(product(
             TEXT_TYPES,
-            COMPUTATION_METHODS,
+            TOPLEN_COMPUTATION_METHODS,
             WORD_TOPIC_RELATEDNESS_TYPES,
             SPECIFICITY_ESTIMATION_METHODS
         ))
     )
-    def test_compute_intratext(
+    def test_compute_intratext_toplen(
             self,
             text_type: TextType,
             computation_method: ComputationMethod,
@@ -268,8 +340,39 @@ class TestIntratextCoherenceScore:
             word_topic_relatedness=word_topic_relatedness,
             specificity_estimation=specificity_estimation
         )
+        coherences = score.compute(self.model)
 
-        self._check_compute(score)
+        self._check_topic_coherences_best(coherences)
+
+    @pytest.mark.parametrize(
+        'text_type, computation_method, word_topic_relatedness, specificity_estimation',
+        list(product(
+            TEXT_TYPES,
+            OTHER_COMPUTATION_METHODS,
+            WORD_TOPIC_RELATEDNESS_TYPES,
+            SPECIFICITY_ESTIMATION_METHODS
+        ))
+    )
+    def test_compute_intratext_others(
+            self,
+            text_type: TextType,
+            computation_method: ComputationMethod,
+            word_topic_relatedness: WordTopicRelatednessType,
+            specificity_estimation: SpecificityEstimationMethod) -> None:
+
+        if computation_method in RESEARCH_COMPUTATION_METHODS:
+            pytest.xfail(RESEARCH_INTRATEXT_MESSAGE)
+
+        score = _IntratextCoherenceScore(
+            self.dataset,
+            text_type=text_type,
+            computation_method=computation_method,
+            word_topic_relatedness=word_topic_relatedness,
+            specificity_estimation=specificity_estimation
+        )
+        coherences = score.compute(self.model)
+
+        self._check_topic_coherences_good_bad(coherences)
 
     @pytest.mark.parametrize(
         'window',
@@ -284,15 +387,17 @@ class TestIntratextCoherenceScore:
             specificity_estimation=SpecificityEstimationMethod.NONE,
             window=window,
         )
+        coherences = score.compute(self.model)
 
-        self._check_compute(score)
+        self._check_topic_coherences_good_bad(coherences)
 
     @pytest.mark.parametrize('keep_in_memory', [True, False])
     def test_compute_intratext_small_big_data(self, keep_in_memory) -> None:
         dataset = Dataset(self.dataset_file_path, keep_in_memory=keep_in_memory)
         score = _IntratextCoherenceScore(dataset)
+        coherences = score.compute(self.model)
 
-        self._check_compute(score)
+        self._check_topic_coherences_best(coherences)
 
     @pytest.mark.parametrize(
         'text_type, computation_method, word_topic_relatedness, specificity_estimation',
@@ -394,15 +499,17 @@ class TestIntratextCoherenceScore:
             word_topic_relatedness=word_topic_relatedness,
             specificity_estimation=specificity_estimation
         )
+        coherences = score.compute(self.model)
 
-        self._check_compute(score, strict=False)
+        self._check_topic_coherences_best(coherences, strict=False)
 
     @pytest.mark.parametrize('keep_in_memory', [True, False])
     def test_compute_toptokens_small_big_data(self, keep_in_memory) -> None:
         dataset = Dataset(self.dataset_file_path, keep_in_memory=keep_in_memory)
         score = _TopTokensCoherenceScore(dataset)
+        coherences = score.compute(self.model)
 
-        self._check_compute(score, strict=False)
+        self._check_topic_coherences_best(coherences, strict=False)
 
     @pytest.mark.parametrize(
         'text_type, word_topic_relatedness, specificity_estimation',
@@ -472,15 +579,26 @@ class TestIntratextCoherenceScore:
 
         self._check_call(score)
 
-    def _check_compute(self, score: _BaseCoherenceScore, strict: bool = True) -> None:
-        coherences = score.compute(self.model)
+    def _check_topic_coherences_good_bad(self, coherences: Dict) -> None:
+        for good_topic in self.good_topics:
+            for bad_topic in self.bad_topics:
+                assert coherences[good_topic] > coherences[bad_topic], (
+                    f"Good: {good_topic}. Bad: {bad_topic}. Coherences: {coherences}."
+                )
+
+        assert coherences[self.out_of_documents_topic] is None, (
+            'Topic that is not in any document has coherence other than None'
+        )
+
+    def _check_topic_coherences_best(self, coherences: Dict, strict: bool = True) -> None:
         coherence_values = list(coherences.values())
         maximum_coherence = max(c for c in coherence_values if c is not None)
 
-        if coherences[self.best_topic] != maximum_coherence:
+        if coherences[self.concentrated_topic] != maximum_coherence:
             message = (
-                f'Topic that expected to be best doesn\'t have max coherence:'
-                f' {coherences[self.best_topic]} != {maximum_coherence}!'
+                f'Topic "{self.concentrated_topic}" that expected to be best doesn\'t have max coherence:'
+                f' {coherences[self.concentrated_topic]} != {maximum_coherence}!'
+                f' Coherences: {coherences}.'
             )
 
             if strict:

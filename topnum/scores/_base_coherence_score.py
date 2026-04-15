@@ -222,7 +222,7 @@ class _BaseCoherenceScore(TopicNetBaseScore):
         return dict(zip(
             topics,
             [
-                float(np.mean(coherence_values))
+                float(np.mean(coherence_values))  # TODO: maybe mean is not the best option here (median? or just remove some extreme cases before mean?)
                 if len(coherence_values) > 0 else None
                 for coherence_values in topic_coherences
             ]
