@@ -102,6 +102,7 @@ def init_model_from_family(
         model = init_decorrelated_plsa(
             dataset, modalities_to_use, main_modality, num_topics, model_params
         )
+        # TODO: add this option also (decorr + smooth Vs current decorr only)
         # model = init_decorrelated_artm(
         #     dataset, modalities_to_use, main_modality, num_topics, 1, model_params
         # )
@@ -216,7 +217,6 @@ def init_decorrelated_plsa(
     return model
 
 
-# TODO: is it the same as init_baseline_artm?
 def init_decorrelated_artm(
         dataset,
         modalities_to_use,

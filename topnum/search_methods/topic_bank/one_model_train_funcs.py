@@ -292,11 +292,6 @@ def _get_topic_model(
 
     topic_names = [f'topic_{i}' for i in range(num_topics)]
 
-    # if seed is None:
-    #     artm_model = artm.ARTM(topic_names=topic_names)
-    # else:
-    #     artm_model = artm.ARTM(topic_names=topic_names, seed=seed)
-
     if main_modality is not None:
         class_ids = {main_modality: 1}
     else:
@@ -306,11 +301,6 @@ def _get_topic_model(
         seed = -1  # for ARTM, it means "no seed"
 
     artm_model = artm.ARTM(topic_names=topic_names, seed=seed, class_ids=class_ids)  # TODO: not list, but dict!!!
-
-    # artm_model = init_model(topic_names, class_ids=[MAIN_MODALITY])
-
-    # artm_model = init_plsa(DATASET, [MAIN_MODALITY], MAIN_MODALITY, 5)
-
     artm_model.num_processors = num_processors
     artm_model.initialize(dictionary)
 

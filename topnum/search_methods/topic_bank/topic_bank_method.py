@@ -559,10 +559,10 @@ class TopicBankMethod(BaseSearchMethod):
                         ' Check your bank topics!'
                     )
 
-                    print(f'Bank Phi:\n{bank_phi.to_numpy()}')
-                    print(f'Total topic probs: {bank_phi.to_numpy().sum(axis=0)}.')
-                    print(f'Bank model Phi:\n{bank_model.get_phi().to_numpy()}')
-                    print(f'Total topic probs: {bank_model.get_phi().to_numpy().sum(axis=0)}.')
+                    # print(f'Bank Phi:\n{bank_phi.to_numpy()}')
+                    # print(f'Total topic probs: {bank_phi.to_numpy().sum(axis=0)}.')
+                    # print(f'Bank model Phi:\n{bank_model.get_phi().to_numpy()}')
+                    # print(f'Total topic probs: {bank_model.get_phi().to_numpy().sum(axis=0)}.')
 
                 _logger.info('Computing default scores for bank model...')
 
@@ -611,14 +611,14 @@ class TopicBankMethod(BaseSearchMethod):
                         ' Check your bank topics!'
                     )
 
-                    print(f'Bank Phi:\n{bank_phi.to_numpy()}')
-                    print(f'Total topic probs: {bank_phi.to_numpy().sum(axis=0)}.')
-                    print(f'Bank model Phi (including bcg topic):\n{bank_model.get_phi().to_numpy()}')
-                    print(f'Total topic probs (including bcg topic): {bank_model.get_phi().to_numpy().sum(axis=0)}.')
+                    # print(f'Bank Phi:\n{bank_phi.to_numpy()}')
+                    # print(f'Total topic probs: {bank_phi.to_numpy().sum(axis=0)}.')
+                    # print(f'Bank model Phi (including bcg topic):\n{bank_model.get_phi().to_numpy()}')
+                    # print(f'Total topic probs (including bcg topic): {bank_model.get_phi().to_numpy().sum(axis=0)}.')
 
                 scores['ppl_cheatty'] = bank_model.scores['ppl_cheatty'][-1]
 
-                print(f'Bank scores: {scores}.')
+                print(f'Bank scores: {scores}.')  # TODO: log, not print
 
             # Topic scores already calculated
 
